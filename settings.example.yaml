@@ -1,0 +1,102 @@
+# NeedScoop Configuration
+# Copy this file to settings.yaml and fill in your API keys
+
+# ============================================================
+# API KEYS
+# ============================================================
+api_keys:
+  # OpenAI - for embeddings
+  # Get your key at: https://platform.openai.com/api-keys
+  openai: "sk-..."
+  
+  # Anthropic - for report generation (optional)
+  # Get your key at: https://console.anthropic.com/
+  anthropic: "sk-ant-..."
+  
+  # Bluesky - optional, for authenticated requests
+  # Create an App Password at: https://bsky.app/settings/app-passwords
+  bluesky:
+    handle: "your-handle.bsky.social"
+    app_password: "xxxx-xxxx-xxxx-xxxx"
+
+# ============================================================
+# DATA COLLECTION
+# ============================================================
+collection:
+  # Bluesky Firehose settings
+  bluesky:
+    enabled: true
+    # Filter by language (empty = all languages)
+    languages:
+      - "en"
+    # Maximum posts to collect per run (0 = unlimited)
+    max_posts_per_run: 10000
+    # Minimum engagement to save (reduces noise)
+    min_engagement: 0
+  
+  # Future: G2/Capterra
+  reviews:
+    enabled: false
+    sources:
+      - g2
+      - capterra
+
+# ============================================================
+# ANALYSIS
+# ============================================================
+analysis:
+  embedding:
+    model: "text-embedding-3-small"
+    batch_size: 100  # Process 100 posts at a time
+  
+  clustering:
+    # UMAP parameters
+    umap:
+      n_components: 50
+      n_neighbors: 15
+      min_dist: 0.1
+      metric: "cosine"
+    
+    # HDBSCAN parameters
+    hdbscan:
+      min_cluster_size: 10
+      min_samples: 5
+      cluster_selection_epsilon: 0.5
+
+# ============================================================
+# STORAGE
+# ============================================================
+storage:
+  # ChromaDB settings
+  chroma:
+    path: "./data/chroma"
+    collection_name: "posts"
+  
+  # Report output
+  reports:
+    path: "./data/reports"
+    format:
+      - "markdown"
+      - "json"
+
+# ============================================================
+# SCHEDULING
+# ============================================================
+schedule:
+  # Collection interval (used by cron)
+  collection_interval_hours: 6
+  
+  # Analysis interval
+  analysis_interval_hours: 24
+  
+  # Report generation
+  report_day: "monday"  # Weekly report day
+
+# ============================================================
+# LOGGING
+# ============================================================
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "./logs/needscoop.log"
+  max_size_mb: 100
+  backup_count: 5
