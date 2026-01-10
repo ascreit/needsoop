@@ -1,11 +1,12 @@
 """
 Bluesky Firehose collector.
 
-Connects to the Bluesky AT Protocol Firehose to collect posts
-that match configured signal patterns.
+Connects to the Bluesky AT Protocol Firehose to collect posts.
+Uses minimal exclusion filtering (politics) instead of keyword matching.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Callable, Iterator
 
@@ -25,33 +26,47 @@ from .base import BaseCollector, Post
 
 logger = logging.getLogger(__name__)
 
+# Political/news keywords to exclude (case-insensitive)
+EXCLUSION_KEYWORDS = [
+    "trump", "biden", "maga", "congress", "senate",
+    "democrat", "republican", "liberal", "conservative",
+    "election", "vote", "voting",
+    "israel", "gaza", "palestine", "ukraine",
+    "murder",
+]
+
+# Compile regex for efficient matching
+EXCLUSION_PATTERN = re.compile(
+    r"\b(" + "|".join(EXCLUSION_KEYWORDS) + r")\b",
+    re.IGNORECASE
+)
+
 
 class BlueskyCollector(BaseCollector):
     """
     Collector for Bluesky posts via the AT Protocol Firehose.
 
     The Firehose provides a real-time stream of all public posts on Bluesky.
-    This collector filters posts based on signal patterns and yields matching posts.
+    Uses minimal exclusion filtering (politics/news) instead of keyword matching.
     """
 
     def __init__(
         self,
-        signal_matcher: Callable[[str], tuple[str | None, list[str]]] | None = None,
-        min_length: int = 20,
+        min_length: int = 50,
         max_length: int = 1000,
+        japanese_only: bool = False,
     ):
         """
         Initialize the Bluesky collector.
 
         Args:
-            signal_matcher: Function that takes text and returns (signal_type, matches).
-                           If None, all posts are collected.
             min_length: Minimum post length to consider.
             max_length: Maximum post length to consider.
+            japanese_only: If True, only collect posts with Japanese language tag.
         """
-        self.signal_matcher = signal_matcher
         self.min_length = min_length
         self.max_length = max_length
+        self.japanese_only = japanese_only
         self._client: FirehoseSubscribeReposClient | None = None
         self._running = False
         self._collected_posts: list[Post] = []
@@ -89,13 +104,15 @@ class BlueskyCollector(BaseCollector):
             if len(text) < self.min_length or len(text) > self.max_length:
                 return None
 
-            # Signal matching
-            signal_type = None
-            signal_matches = []
-            if self.signal_matcher:
-                signal_type, signal_matches = self.signal_matcher(text)
-                if signal_type is None:
-                    return None  # No signal detected, skip
+            # Exclusion filter (politics/news)
+            if EXCLUSION_PATTERN.search(text):
+                return None
+
+            # Japanese language filter
+            if self.japanese_only:
+                langs = post_record.langs or []
+                if "ja" not in langs:
+                    return None
 
             # Parse creation time
             created_at = datetime.now(timezone.utc)
@@ -117,8 +134,6 @@ class BlueskyCollector(BaseCollector):
                 text=text,
                 author_id=commit.repo,  # DID
                 created_at=created_at,
-                signal_type=signal_type,
-                signal_matches=signal_matches,
                 uri=uri,
                 metadata={
                     "cid": str(op.cid),

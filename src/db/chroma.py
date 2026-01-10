@@ -26,14 +26,15 @@ class PostStore:
     - Storing posts with their embeddings
     - Semantic similarity search
     - Filtering by metadata (signal type, date, etc.)
-    """
 
-    COLLECTION_NAME = "posts"
+    Collections are separated by source (reddit, bluesky, etc.)
+    """
 
     def __init__(
         self,
         persist_directory: str | Path | None = None,
         embedding_function: Any | None = None,
+        source: str = "default",
     ):
         """
         Initialize the post store.
@@ -43,7 +44,10 @@ class PostStore:
                               If None, uses in-memory storage.
             embedding_function: ChromaDB embedding function.
                                If None, embeddings must be provided manually.
+            source: Data source name (reddit, bluesky, etc.). Used as collection name.
         """
+        self.source = source
+        self._collection_name = f"posts_{source}"
         if persist_directory:
             persist_directory = Path(persist_directory)
             persist_directory.mkdir(parents=True, exist_ok=True)
@@ -62,14 +66,14 @@ class PostStore:
 
         # Get or create the collection
         collection_kwargs = {
-            "name": self.COLLECTION_NAME,
+            "name": self._collection_name,
             "metadata": {"hnsw:space": "cosine"},
         }
         if embedding_function:
             collection_kwargs["embedding_function"] = embedding_function
 
         self._collection = self._client.get_or_create_collection(**collection_kwargs)
-        logger.info(f"Collection '{self.COLLECTION_NAME}' ready with {self.count()} posts")
+        logger.info(f"Collection '{self._collection_name}' ready with {self.count()} posts")
 
     def add(self, post: Post, embedding: list[float] | None = None) -> None:
         """
@@ -296,9 +300,11 @@ class PostStore:
             result = self._collection.get(include=["embeddings"])
 
         embeddings = {}
-        for i, post_id in enumerate(result["ids"]):
-            if result["embeddings"] and result["embeddings"][i]:
-                embeddings[post_id] = result["embeddings"][i]
+        result_embeddings = result.get("embeddings")
+        if result_embeddings is not None:
+            for i, post_id in enumerate(result["ids"]):
+                if i < len(result_embeddings) and result_embeddings[i] is not None:
+                    embeddings[post_id] = result_embeddings[i]
 
         return embeddings
 

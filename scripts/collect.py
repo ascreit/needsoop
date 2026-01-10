@@ -2,7 +2,7 @@
 """
 NeedScoop Collection Script
 
-Collects posts from Bluesky Firehose that match configured signal patterns
+Collects posts from Bluesky Firehose with minimal exclusion filtering
 and stores them in ChromaDB.
 
 Usage:
@@ -25,7 +25,6 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
-from src.analysis.signals import SignalDetector
 from src.collectors.bluesky import BlueskyCollector
 from src.collectors.base import Post
 from src.db.chroma import PostStore
@@ -47,30 +46,29 @@ class Collector:
     def __init__(
         self,
         data_dir: Path,
-        config_dir: Path,
+        min_length: int = 50,
+        max_length: int = 1000,
+        japanese_only: bool = False,
     ):
         """
         Initialize the collector.
 
         Args:
             data_dir: Directory for data storage.
-            config_dir: Directory containing configuration files.
+            min_length: Minimum post length.
+            max_length: Maximum post length.
+            japanese_only: If True, only collect Japanese posts.
         """
         self.data_dir = data_dir
-        self.config_dir = config_dir
-
-        # Initialize components
-        logger.info("Initializing signal detector...")
-        self.signal_detector = SignalDetector(config_dir / "signals.yaml")
 
         logger.info("Initializing post store...")
-        self.store = PostStore(persist_directory=data_dir / "chroma")
+        self.store = PostStore(persist_directory=data_dir / "chroma", source="bluesky")
 
         logger.info("Initializing Bluesky collector...")
         self.bluesky = BlueskyCollector(
-            signal_matcher=self.signal_detector.get_matcher(),
-            min_length=self.signal_detector.min_length,
-            max_length=self.signal_detector.max_length,
+            min_length=min_length,
+            max_length=max_length,
+            japanese_only=japanese_only,
         )
 
         self._running = False
@@ -106,7 +104,7 @@ class Collector:
                 if collected % 10 == 0:
                     progress.update(
                         task,
-                        description=f"Collected {collected} posts (last: {post.signal_type})",
+                        description=f"Collected {collected} posts",
                     )
 
         logger.info(f"Batch collection complete. Collected {collected} posts.")
@@ -140,7 +138,7 @@ class Collector:
                 rate = self._collected_count / elapsed if elapsed > 0 else 0
                 console.print(
                     f"[green]Collected {self._collected_count} posts "
-                    f"({rate:.1f}/s, {post.signal_type})[/green]"
+                    f"({rate:.1f}/s)[/green]"
                 )
 
             # Check if duration exceeded
@@ -183,7 +181,7 @@ class Collector:
                 rate = self._collected_count / elapsed if elapsed > 0 else 0
                 console.print(
                     f"[green]Collected {self._collected_count} posts "
-                    f"({rate:.1f}/s) - {post.signal_type}: {post.text[:50]}...[/green]"
+                    f"({rate:.1f}/s) - {post.text[:50]}...[/green]"
                 )
 
         def signal_handler(signum, frame):
@@ -245,10 +243,15 @@ def main():
         help="Directory for data storage",
     )
     parser.add_argument(
-        "--config-dir",
-        type=Path,
-        default=Path(__file__).parent.parent / "config",
-        help="Directory containing configuration files",
+        "--min-length",
+        type=int,
+        default=50,
+        help="Minimum post length (default: 50)",
+    )
+    parser.add_argument(
+        "--japanese-only",
+        action="store_true",
+        help="Only collect Japanese posts",
     )
     parser.add_argument(
         "--stats",
@@ -269,7 +272,8 @@ def main():
     # Initialize collector
     collector = Collector(
         data_dir=args.data_dir,
-        config_dir=args.config_dir,
+        min_length=args.min_length,
+        japanese_only=args.japanese_only,
     )
 
     if args.stats:

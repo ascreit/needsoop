@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(python:*)",
-      "Bash(timeout 30 python:*)"
+      "Bash(timeout 30 python:*)",
+      "Bash(python3:*)"
+    ],
+    "deny": [
+      "Git(push)",
+      "Git(pull)",
+      "Git(add *)",
+      "Git(commit -m *)",
+      "Read(.env)",
+      "Bash(rm -rf *)"
     ]
   }
 }
